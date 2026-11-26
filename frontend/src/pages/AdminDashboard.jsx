@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import api from '../api/axios';
 
@@ -18,7 +18,7 @@ export const AdminDashboard = () => {
       ]);
       setStats(statsRes.data);
       setPendingRecipients(pendingRes.data);
-    } catch (err) {
+    } catch {
       setError('Failed to fetch administrator statistics.');
     } finally {
       setLoading(false);
@@ -36,7 +36,7 @@ export const AdminDashboard = () => {
       setToastMessage(`Successfully approved charity "${orgName}"!`);
       setTimeout(() => setToastMessage(''), 4000);
       await loadData();
-    } catch (err) {
+    } catch {
       alert('Failed to approve charity. Please try again.');
     } finally {
       setActionLoading(null);

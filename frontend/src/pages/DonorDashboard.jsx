@@ -1,6 +1,6 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import api from '../api/axios';
-import { useAuth } from '../context/AuthContext';
+import { useAuth } from '../hooks/useAuth';
 
 export const DonorDashboard = () => {
   const { user } = useAuth();
@@ -13,7 +13,7 @@ export const DonorDashboard = () => {
       try {
         const res = await api.get('/api/donor/dashboard');
         setDashboardData(res.data);
-      } catch (err) {
+      } catch {
         setError('Failed to load donor dashboard from server.');
       } finally {
         setLoading(false);
@@ -141,7 +141,7 @@ export const DonorDashboard = () => {
                   <span className="text-sm font-medium">Create Food Listing</span>
                 </div>
                 <span className="text-[11px] font-semibold bg-slate-200 text-slate-500 px-2 py-0.5 rounded-full">
-                  Increment 2
+                  Upcoming
                 </span>
               </div>
 
@@ -155,7 +155,7 @@ export const DonorDashboard = () => {
                   <span className="text-sm font-medium">Manage Listings</span>
                 </div>
                 <span className="text-[11px] font-semibold bg-slate-200 text-slate-500 px-2 py-0.5 rounded-full">
-                  Increment 2
+                  Upcoming
                 </span>
               </div>
             </div>
@@ -166,7 +166,7 @@ export const DonorDashboard = () => {
               Rescue Network Readiness
             </h4>
             <p className="text-xs text-emerald-800 leading-relaxed">
-              Your profile is authenticated and active. When food listing features roll out in Increment 2, your establishment will be immediately ready to post surplus perishable items.
+              Your profile is authenticated and active. When food-listing features are released, your establishment will be ready to post surplus perishable items.
             </p>
           </div>
         </div>

@@ -3,6 +3,7 @@ package com.ecobite.service;
 import com.ecobite.entity.RevokedToken;
 import com.ecobite.entity.User;
 import com.ecobite.entity.UserTokenInvalidation;
+import com.ecobite.repository.PasswordResetTokenRepository;
 import com.ecobite.repository.RevokedTokenRepository;
 import com.ecobite.repository.UserTokenInvalidationRepository;
 import org.springframework.scheduling.annotation.Scheduled;
@@ -17,11 +18,14 @@ public class TokenRevocationService {
 
     private final RevokedTokenRepository revokedTokenRepository;
     private final UserTokenInvalidationRepository userTokenInvalidationRepository;
+    private final PasswordResetTokenRepository passwordResetTokenRepository;
 
     public TokenRevocationService(RevokedTokenRepository revokedTokenRepository,
-                                  UserTokenInvalidationRepository userTokenInvalidationRepository) {
+                                  UserTokenInvalidationRepository userTokenInvalidationRepository,
+                                  PasswordResetTokenRepository passwordResetTokenRepository) {
         this.revokedTokenRepository = revokedTokenRepository;
         this.userTokenInvalidationRepository = userTokenInvalidationRepository;
+        this.passwordResetTokenRepository = passwordResetTokenRepository;
     }
 
     @Transactional
@@ -49,5 +53,6 @@ public class TokenRevocationService {
     @Transactional
     public void purgeExpiredTokens() {
         revokedTokenRepository.deleteByExpiresAtBefore(Instant.now());
+        passwordResetTokenRepository.deleteByExpiresAtBefore(Instant.now());
     }
 }

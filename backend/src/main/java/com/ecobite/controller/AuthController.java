@@ -2,8 +2,10 @@ package com.ecobite.controller;
 
 import com.ecobite.dto.AuthResponse;
 import com.ecobite.dto.ChangePasswordRequest;
+import com.ecobite.dto.ForgotPasswordRequest;
 import com.ecobite.dto.LoginRequest;
 import com.ecobite.dto.RegisterRequest;
+import com.ecobite.dto.ResetPasswordRequest;
 import com.ecobite.dto.UserResponse;
 import com.ecobite.security.CustomUserDetails;
 import com.ecobite.service.UserService;
@@ -56,5 +58,18 @@ public class AuthController {
             @RequestHeader(value = "Authorization", required = false) String authHeader) {
         userService.changePassword(request, principal, authHeader);
         return ResponseEntity.ok(Map.of("message", "Password changed successfully. Please log in again."));
+    }
+
+    @PostMapping("/forgot-password")
+    public ResponseEntity<Map<String, String>> forgotPassword(@Valid @RequestBody ForgotPasswordRequest request) {
+        userService.requestPasswordReset(request);
+        // Keep this response identical for known and unknown emails to avoid account enumeration.
+        return ResponseEntity.ok(Map.of("message", "If an account matches that email address, a password-reset link has been sent."));
+    }
+
+    @PostMapping("/reset-password")
+    public ResponseEntity<Map<String, String>> resetPassword(@Valid @RequestBody ResetPasswordRequest request) {
+        userService.resetPassword(request);
+        return ResponseEntity.ok(Map.of("message", "Password reset successfully. Please log in with your new password."));
     }
 }

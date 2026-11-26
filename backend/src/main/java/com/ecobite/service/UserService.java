@@ -1,6 +1,7 @@
 package com.ecobite.service;
 
 import com.ecobite.dto.*;
+import com.ecobite.entity.PasswordResetToken;
 import com.ecobite.entity.Role;
 import com.ecobite.entity.User;
 import com.ecobite.exception.DuplicateEmailException;
@@ -8,9 +9,12 @@ import com.ecobite.exception.FieldValidationException;
 import com.ecobite.exception.InvalidRequestException;
 import com.ecobite.exception.ResourceNotFoundException;
 import com.ecobite.repository.UserRepository;
+import com.ecobite.repository.PasswordResetTokenRepository;
 import com.ecobite.security.CustomUserDetails;
 import com.ecobite.security.JwtTokenProvider;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.mail.MailException;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
@@ -20,6 +24,11 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
+import java.time.temporal.ChronoUnit;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
+import java.security.SecureRandom;
+import java.util.Base64;
 import java.util.List;
 import java.util.Map;
 import java.util.regex.Pattern;
@@ -29,23 +38,34 @@ public class UserService {
 
     private static final Pattern PH_PHONE_PATTERN = Pattern.compile("^09\\d{9}$");
     private static final Pattern E164_PHONE_PATTERN = Pattern.compile("^\\+\\d{10,15}$");
+    private static final SecureRandom SECURE_RANDOM = new SecureRandom();
+    private static final org.slf4j.Logger log = org.slf4j.LoggerFactory.getLogger(UserService.class);
 
     private final UserRepository userRepository;
     private final PasswordEncoder passwordEncoder;
     private final AuthenticationManager authenticationManager;
     private final JwtTokenProvider jwtTokenProvider;
     private final TokenRevocationService tokenRevocationService;
+    private final PasswordResetTokenRepository passwordResetTokenRepository;
+    private final PasswordResetEmailService passwordResetEmailService;
+    private final long resetTokenExpirationMinutes;
 
     public UserService(UserRepository userRepository,
                        PasswordEncoder passwordEncoder,
                        AuthenticationManager authenticationManager,
                        JwtTokenProvider jwtTokenProvider,
-                       TokenRevocationService tokenRevocationService) {
+                       TokenRevocationService tokenRevocationService,
+                       PasswordResetTokenRepository passwordResetTokenRepository,
+                       PasswordResetEmailService passwordResetEmailService,
+                       @Value("${ecobite.reset-token.expiration-minutes:15}") long resetTokenExpirationMinutes) {
         this.userRepository = userRepository;
         this.passwordEncoder = passwordEncoder;
         this.authenticationManager = authenticationManager;
         this.jwtTokenProvider = jwtTokenProvider;
         this.tokenRevocationService = tokenRevocationService;
+        this.passwordResetTokenRepository = passwordResetTokenRepository;
+        this.passwordResetEmailService = passwordResetEmailService;
+        this.resetTokenExpirationMinutes = resetTokenExpirationMinutes;
     }
 
     @Transactional
@@ -221,6 +241,63 @@ public class UserService {
         tokenRevocationService.invalidateAllUserTokens(user);
     }
 
+    /**
+     * Requests a single-use reset link. The controller deliberately returns the
+     * same success message whether or not an account uses the supplied email.
+     */
+    @Transactional
+    public void requestPasswordReset(ForgotPasswordRequest request) {
+        String normalizedEmail = request.email().trim().toLowerCase();
+        userRepository.findByEmailIgnoreCase(normalizedEmail).ifPresent(user -> {
+            passwordResetTokenRepository.deleteByUserUserIdAndUsedAtIsNull(user.getUserId());
+
+            String rawToken = generateResetToken();
+            PasswordResetToken token = new PasswordResetToken(
+                    user,
+                    hashResetToken(rawToken),
+                    Instant.now().plus(resetTokenExpirationMinutes, ChronoUnit.MINUTES)
+            );
+            passwordResetTokenRepository.save(token);
+
+            try {
+                passwordResetEmailService.sendPasswordResetEmail(user, rawToken, resetTokenExpirationMinutes);
+            } catch (MailException ex) {
+                // Preserve the generic response so SMTP failures cannot reveal which emails are registered.
+                log.error("Unable to send password reset email for user {}", user.getUserId(), ex);
+            }
+        });
+    }
+
+    @Transactional
+    public void resetPassword(ResetPasswordRequest request) {
+        if (!request.newPassword().equals(request.confirmPassword())) {
+            throw new FieldValidationException(
+                    "New password and confirmation do not match.",
+                    Map.of("confirmPassword", "Passwords do not match")
+            );
+        }
+
+        PasswordResetToken resetToken = passwordResetTokenRepository
+                .findByTokenHashAndUsedAtIsNull(hashResetToken(request.token()))
+                .filter(token -> token.getExpiresAt().isAfter(Instant.now()))
+                .orElseThrow(() -> new InvalidRequestException("Password reset link is invalid or has expired."));
+
+        User user = resetToken.getUser();
+        if (passwordEncoder.matches(request.newPassword(), user.getPasswordHash())) {
+            throw new FieldValidationException(
+                    "New password must be different from your current password.",
+                    Map.of("newPassword", "New password must be different from current password")
+            );
+        }
+
+        user.setPasswordHash(passwordEncoder.encode(request.newPassword()));
+        resetToken.setUsedAt(Instant.now());
+        userRepository.save(user);
+        passwordResetTokenRepository.save(resetToken);
+        passwordResetTokenRepository.deleteByUserUserIdAndUsedAtIsNull(user.getUserId());
+        tokenRevocationService.invalidateAllUserTokens(user);
+    }
+
     public void logout(String authHeader) {
         if (authHeader != null && authHeader.startsWith("Bearer ")) {
             String token = authHeader.substring(7);
@@ -229,6 +306,21 @@ public class UserService {
                 Instant expiry = jwtTokenProvider.getExpirationFromToken(token);
                 tokenRevocationService.revokeToken(jti, expiry);
             }
+        }
+    }
+
+    private String generateResetToken() {
+        byte[] randomBytes = new byte[32];
+        SECURE_RANDOM.nextBytes(randomBytes);
+        return Base64.getUrlEncoder().withoutPadding().encodeToString(randomBytes);
+    }
+
+    private String hashResetToken(String rawToken) {
+        try {
+            byte[] digest = MessageDigest.getInstance("SHA-256").digest(rawToken.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+            return java.util.HexFormat.of().formatHex(digest);
+        } catch (NoSuchAlgorithmException ex) {
+            throw new IllegalStateException("SHA-256 is not available", ex);
         }
     }
 

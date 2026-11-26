@@ -1,20 +1,23 @@
 # EcoBite: Surplus Food Rescue & Redistribution Network
 
 **Course:** IT342 - Systems Integration and Architecture 1  
-**Project Development Increment 1:** User Accounts, Authentication, and Role-Based Authorization  
+**Project Development Increment 2:** User Account Management and Password Recovery
 **Author:** Valendez, Denzel Bajenting  
-**Version:** 1.0 (Increment 1 Delivery)
+**Version:** 2.0 (Increment 2 Delivery)
 
 ---
 
 ## 1. Project Overview
 Commercial food establishments discard tons of edible surplus food daily, while local charitable organizations struggle to maintain consistent meal supplies. **EcoBite** is a web-based surplus food rescue platform connecting local businesses (restaurants, cafes, grocery stores) with verified charities, shelters, and food banks.
 
-Increment 1 establishes the foundational security, user management, and role-based access architecture:
+Increment 1 establishes the foundational security, user management, and role-based access architecture. Increment 2 completes the account-management flow:
 - Secure multi-role user registration (Donors and Recipients).
 - Administrative verification gate for charity accounts (**FR-001.2**).
 - Stateless JWT sessions with token revocation on logout.
 - Dedicated dashboards with live database integration for all three system roles (**DONOR**, **RECIPIENT**, **ADMIN**).
+- Authenticated users can view and update only their own profile details.
+- Users can change their password; every existing session is invalidated afterward.
+- Users can request a single-use, time-limited password-reset link delivered through SMTP/Mailpit.
 
 ---
 
@@ -98,6 +101,9 @@ docker compose up -d
    ```
    *The frontend will launch at `http://localhost:5173`.*
 
+### 4.4. Local Password-Reset Email
+The bundled Docker Compose file also starts Mailpit, a local SMTP inbox. After requesting a password reset, open `http://localhost:8025` to view the email and follow its reset link. Mailpit is intended for local development only; configure a real SMTP provider before deployment.
+
 ---
 
 ## 5. Seeded Administrator Account Explanation
@@ -140,7 +146,17 @@ Follow this 2-minute scenario to verify all Increment 1 requirements:
 4. **Confirm Recipient Approval:**
    - Click **Logout**. Sign in again as `"charity@hopecare.org"`.
    - You are routed to `/recipient/dashboard`. The warning banner is gone, replaced with:
-     > **"Account Approved & Verified. Your charitable organization is approved. You will have full food claim privileges in Increment 2."**
+     > **"Account Approved & Verified. Your charitable organization is approved and will be eligible to claim food when the claiming module is released."**
+
+5. **Manage Your Profile and Password (Increment 2):**
+   - Sign in with any account and open **Profile** in the navigation.
+   - Update the account contact details. The application updates only the currently authenticated account; roles and recipient verification cannot be changed from this page.
+   - Change the password using the current password. All existing sessions are invalidated and the user must sign in again.
+
+6. **Reset a Forgotten Password (Increment 2):**
+   - On the sign-in page, choose **Forgot your password?** and enter an account email.
+   - Open Mailpit at `http://localhost:8025`, open the reset email, and follow the one-time link.
+   - Set a new password. The link expires after the configured `RESET_TOKEN_EXPIRATION_MINUTES` (15 minutes by default), cannot be reused, and invalidates all prior sessions.
 
 ---
 
@@ -152,6 +168,11 @@ Follow this 2-minute scenario to verify all Increment 1 requirements:
 | `POST` | `/api/auth/login` | Public (Unauthenticated) | Authenticates credentials; returns `{ token, tokenType, expiresIn, user }` |
 | `POST` | `/api/auth/logout` | Authenticated (Any role) | Revokes current JWT's `jti` in database table `revoked_tokens` |
 | `GET` | `/api/auth/me` | Authenticated (Any role) | Retrieves authenticated user profile from token |
+| `GET` | `/api/users/{userId}` | Authenticated owner only | Retrieves a profile only when `{userId}` is the current user's ID |
+| `PUT` | `/api/users/{userId}` | Authenticated owner only | Updates the current user's name, email, contact details, address, and optional coordinates |
+| `PUT` | `/api/auth/change-password` | Authenticated (Any role) | Validates the current password, changes it, and invalidates all active sessions |
+| `POST` | `/api/auth/forgot-password` | Public | Sends a single-use reset link when the email belongs to an account; response never reveals account existence |
+| `POST` | `/api/auth/reset-password` | Public | Validates a reset token and sets a new password, invalidating all active sessions |
 | `GET` | `/api/donor/dashboard` | `DONOR` only | Retrieves donor profile and active account status |
 | `GET` | `/api/recipient/dashboard` | `RECIPIENT` only | Retrieves recipient profile and current verification status |
 | `GET` | `/api/admin/dashboard` | `ADMIN` only | Returns real aggregate metrics (total users, donors, recipients, pending, approved) |
@@ -270,6 +291,8 @@ IT342-FinalProject/
 | **FR-001.1** | Users register as either Donor or Recipient | Handled in `RegisterPage.jsx` and `UserService.register()`. Role `ADMIN` is rejected. Donors are marked `is_verified=true`; Recipients are marked `is_verified=false`. |
 | **FR-001.2** | Recipient accounts require Admin approval before claiming food | Recipient dashboard checks `is_verified`. If false, warning banner is displayed and claim features are locked. Admins approve via `AdminController.verifyRecipient()`. |
 | **Security NFR** | BCrypt password encryption, JWT sessions, strict RBAC | Passwords hashed using Spring Security's `BCryptPasswordEncoder`. JWT issued with HS256 algorithm and UUID `jti`. Role restrictions enforced in `SecurityConfig` and method security (`@PreAuthorize`). |
+| **Account Management** | Users can maintain their own account details without privilege changes | `UserController` and `UserService` enforce self-ownership for profile reads and updates. The update DTO excludes roles, verification flags, IDs, and password hashes. |
+| **Password Recovery** | Password reset must be secure and time-limited | Reset tokens are generated with `SecureRandom`, stored only as SHA-256 hashes, expire after 15 minutes by default, are single-use, and invalidate all prior JWTs after a successful reset. |
 | **Usability NFR** | Mobile-responsive design | Built using Tailwind CSS, responsive grid layouts, and collapsing mobile navigation tested down to 375px mobile viewport width. |
 | **Maintainability** | Layered backend architecture | Separated into Controller, Service, and Repository layers with zero logic leakage. Java records used for immutable DTOs without Lombok dependencies. |
 | **Class Diagram Mapping** | Realization of SRS `UserController` and `UserRepository` | The SRS conceptual `UserController` is realized cleanly as `AuthController` (register, login, logout, me) and `AdminController` (verify, revoke, list recipients) backed by `UserService` and `UserRepository`. |
@@ -279,23 +302,25 @@ IT342-FinalProject/
 ## 11. Security Implementation Notes
 - **BCrypt Hashing:** Passwords are never stored in plaintext. They are encrypted using `BCryptPasswordEncoder` with an adaptive work factor of 10. No password or hash is ever returned in responses or exposed in application logs.
 - **Database Token Revocation for Logout:** Although JWTs are stateless, calling `POST /api/auth/logout` records the token's unique ID (`jti`) and expiration into the `revoked_tokens` table. The `JwtAuthenticationFilter` checks this table, rendering the logged-out token immediately invalid (401 Unauthorized) upon subsequent requests. A background `@Scheduled` task cleans up expired tokens every 5 minutes.
+- **Password Change and Reset:** A successful password change or reset updates the BCrypt hash and records a user-wide invalidation timestamp. The JWT filter rejects every token issued at or before that timestamp, signing out all active devices. Reset links use a cryptographically random token; only its SHA-256 hash is stored, and the raw token exists only in the emailed URL.
 - **Why CSRF is Disabled:** The application uses stateless JWT bearer authentication where tokens are stored in client-side memory/sessionStorage and transmitted explicitly in the `Authorization: Bearer <token>` HTTP header. Because credentials are not automatically transmitted via browser cookies, Cross-Site Request Forgery (CSRF) is impossible by design, allowing CSRF protection to be safely disabled.
-- **CORS Configuration:** Spring Security strictly restricts Cross-Origin Resource Sharing to origins defined in `CORS_ALLOWED_ORIGINS` (default `http://localhost:5173`), permitting necessary REST verbs (`GET`, `POST`, `PATCH`, `OPTIONS`) and exposing the `Authorization` header.
+- **CORS Configuration:** Spring Security strictly restricts Cross-Origin Resource Sharing to origins defined in `CORS_ALLOWED_ORIGINS` (default `http://localhost:5173`), permitting the necessary REST verbs (`GET`, `POST`, `PATCH`, `PUT`, `DELETE`, `OPTIONS`) and exposing the `Authorization` header.
 
 ---
 
 ## 12. Troubleshooting
 - **Database Connection Refused:** Verify PostgreSQL is running on port 5432 (`netstat -ano | findstr 5432`) and credentials match `backend/.env`.
 - **401 Unauthorized on Fresh Session:** Ensure `JWT_SECRET` in `backend/.env` is at least 32 characters long.
+- **Password Reset Email Not Appearing:** Start the local Mailpit service and confirm `MAIL_HOST=localhost`, `MAIL_PORT=1025`; then check `http://localhost:8025`.
 - **Node/Vite Version Mismatch:** Use Node.js 20+; Vite 5 is configured with `@tailwindcss/vite` for maximum compatibility.
 
 ---
 
 ## 13. Scope Boundaries ("Not Yet Implemented")
-The following modules belong to future project increments and are intentionally excluded from Increment 1:
+The following modules belong to future project increments and are intentionally excluded from Increment 2:
 - Food Listings module (creating, editing, and viewing surplus inventory).
 - Food Claiming module (reserving food donations).
 - Twilio API SMS notifications.
 - Google Maps directions and geolocation routing.
 - Impact analytics and reporting.
-- Password reset and email confirmation links.
+- Email confirmation links.
