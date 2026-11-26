@@ -10,6 +10,7 @@ import com.ecobite.repository.UserRepository;
 import com.ecobite.security.CustomUserDetails;
 import com.ecobite.security.JwtTokenProvider;
 import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.Authentication;
@@ -62,33 +63,8 @@ public class UserService {
             throw new InvalidRequestException("Invalid role specified. Role must be either DONOR or RECIPIENT.");
         }
 
-        // Validate and normalize contact number
-        String rawContact = request.contactNumber() != null ? request.contactNumber().trim() : "";
-        String normalizedContact;
-        if (PH_PHONE_PATTERN.matcher(rawContact).matches()) {
-            normalizedContact = "+63" + rawContact.substring(1);
-        } else if (E164_PHONE_PATTERN.matcher(rawContact).matches()) {
-            normalizedContact = rawContact;
-        } else {
-            throw new InvalidRequestException(
-                    "Contact number must be formatted as + followed by 10-15 digits, or Philippine format 09XXXXXXXXX."
-            );
-        }
-
-        // Validate coordinates: both or neither, and within valid boundaries
-        Float latitude = request.latitude();
-        Float longitude = request.longitude();
-        if ((latitude != null && longitude == null) || (latitude == null && longitude != null)) {
-            throw new InvalidRequestException("Both latitude and longitude must be provided, or both omitted.");
-        }
-        if (latitude != null) {
-            if (latitude < -90.0f || latitude > 90.0f) {
-                throw new InvalidRequestException("Latitude must be between -90 and 90 degrees.");
-            }
-            if (longitude < -180.0f || longitude > 180.0f) {
-                throw new InvalidRequestException("Longitude must be between -180 and 180 degrees.");
-            }
-        }
+        String normalizedContact = normalizeAndValidateContact(request.contactNumber());
+        validateCoordinates(request.latitude(), request.longitude());
 
         // Duplicate email prevention (case-insensitive check)
         String normalizedEmail = request.email().trim().toLowerCase();
@@ -108,16 +84,87 @@ public class UserService {
                 role,
                 normalizedContact,
                 request.address().trim(),
-                latitude,
-                longitude,
+                request.latitude(),
+                request.longitude(),
                 isVerified
         );
 
         try {
-            User savedUser = userRepository.save(user);
+            User savedUser = userRepository.saveAndFlush(user);
             return UserResponse.fromEntity(savedUser);
         } catch (DataIntegrityViolationException ex) {
             throw new DuplicateEmailException("An account with email " + normalizedEmail + " already exists.");
+        }
+    }
+
+    public UserResponse getUserProfile(Long userId, CustomUserDetails principal) {
+        enforceSelfOwnership(userId, principal);
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new ResourceNotFoundException("User not found"));
+        return UserResponse.fromEntity(user);
+    }
+
+    @Transactional
+    public UserResponse updateUserProfile(Long userId, UpdateProfileRequest request, CustomUserDetails principal) {
+        enforceSelfOwnership(userId, principal);
+
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new ResourceNotFoundException("User not found"));
+
+        String normalizedContact = normalizeAndValidateContact(request.contactNumber());
+        validateCoordinates(request.latitude(), request.longitude());
+
+        String normalizedEmail = request.email().trim().toLowerCase();
+        if (!normalizedEmail.equalsIgnoreCase(user.getEmail())
+                && userRepository.existsByEmailIgnoreCase(normalizedEmail)) {
+            throw new DuplicateEmailException("An account with email " + normalizedEmail + " already exists.");
+        }
+
+        user.setName(request.name().trim());
+        user.setEmail(normalizedEmail);
+        user.setContactNumber(normalizedContact);
+        user.setAddress(request.address().trim());
+        user.setLatitude(request.latitude());
+        user.setLongitude(request.longitude());
+
+        try {
+            User updated = userRepository.saveAndFlush(user);
+            return UserResponse.fromEntity(updated);
+        } catch (DataIntegrityViolationException ex) {
+            throw new DuplicateEmailException("An account with email " + normalizedEmail + " already exists.");
+        }
+    }
+
+    private void enforceSelfOwnership(Long targetUserId, CustomUserDetails principal) {
+        if (principal == null || !principal.getUserId().equals(targetUserId)) {
+            throw new AccessDeniedException("You are only authorized to access or modify your own profile.");
+        }
+    }
+
+    private String normalizeAndValidateContact(String contactNumber) {
+        String rawContact = contactNumber != null ? contactNumber.trim() : "";
+        if (PH_PHONE_PATTERN.matcher(rawContact).matches()) {
+            return "+63" + rawContact.substring(1);
+        }
+        if (E164_PHONE_PATTERN.matcher(rawContact).matches()) {
+            return rawContact;
+        }
+        throw new InvalidRequestException(
+                "Contact number must be formatted as + followed by 10-15 digits, or Philippine format 09XXXXXXXXX."
+        );
+    }
+
+    private void validateCoordinates(Float latitude, Float longitude) {
+        if ((latitude != null && longitude == null) || (latitude == null && longitude != null)) {
+            throw new InvalidRequestException("Both latitude and longitude must be provided, or both omitted.");
+        }
+        if (latitude != null) {
+            if (latitude < -90.0f || latitude > 90.0f) {
+                throw new InvalidRequestException("Latitude must be between -90 and 90 degrees.");
+            }
+            if (longitude < -180.0f || longitude > 180.0f) {
+                throw new InvalidRequestException("Longitude must be between -180 and 180 degrees.");
+            }
         }
     }
 

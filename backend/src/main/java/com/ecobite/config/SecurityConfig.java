@@ -83,6 +83,7 @@ public class SecurityConfig {
                         .requestMatchers("/api/donor/**").hasRole("DONOR")
                         .requestMatchers("/api/recipient/**").hasRole("RECIPIENT")
                         .requestMatchers("/api/admin/**").hasRole("ADMIN")
+                        .requestMatchers("/api/users/**").hasAnyRole("DONOR", "RECIPIENT", "ADMIN")
                         .requestMatchers("/api/auth/logout", "/api/auth/me").authenticated()
                         .anyRequest().authenticated()
                 )
