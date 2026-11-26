@@ -1,6 +1,5 @@
-import React from 'react';
 import { useNavigate } from 'react-router-dom';
-import { useAuth } from '../context/AuthContext';
+import { useAuth } from '../hooks/useAuth';
 import { getDashboardPathForRole } from '../config/navigation';
 
 export const UnauthorizedPage = () => {
@@ -25,7 +24,7 @@ export const UnauthorizedPage = () => {
         </div>
         <h1 className="text-2xl font-bold text-slate-900">403 - Access Denied</h1>
         <p className="text-sm text-slate-500 mt-2 leading-relaxed">
-          You don't have permission to access this resource. Your current role is{' '}
+          You don&apos;t have permission to access this resource. Your current role is{' '}
           <span className="font-semibold text-slate-800">{user?.role || 'Guest'}</span>.
         </p>
         <div className="mt-6">

@@ -1,7 +1,6 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import api from '../api/axios';
-
-const AuthContext = createContext(null);
+import { AuthContext } from './authStore';
 
 export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
@@ -37,6 +36,16 @@ export const AuthProvider = ({ children }) => {
     setUser(userData);
   };
 
+  const clearSession = () => {
+    sessionStorage.removeItem('ecobite_token');
+    setToken(null);
+    setUser(null);
+  };
+
+  const updateUser = (userData) => {
+    setUser(userData);
+  };
+
   const logout = async () => {
     try {
       await api.post('/api/auth/logout');
@@ -44,9 +53,7 @@ export const AuthProvider = ({ children }) => {
       // Ignore logout errors as client-side cleanup is priority
       console.warn('Logout notification to backend failed or token already invalid', err);
     } finally {
-      sessionStorage.removeItem('ecobite_token');
-      setToken(null);
-      setUser(null);
+      clearSession();
     }
   };
 
@@ -68,16 +75,10 @@ export const AuthProvider = ({ children }) => {
     isAuthenticated: !!token && !!user,
     login,
     logout,
+    clearSession,
+    updateUser,
     refreshUser,
   };
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
-};
-
-export const useAuth = () => {
-  const context = useContext(AuthContext);
-  if (!context) {
-    throw new Error('useAuth must be used within an AuthProvider');
-  }
-  return context;
 };

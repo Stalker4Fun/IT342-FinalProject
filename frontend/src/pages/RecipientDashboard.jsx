@@ -1,6 +1,6 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import api from '../api/axios';
-import { useAuth } from '../context/AuthContext';
+import { useAuth } from '../hooks/useAuth';
 
 export const RecipientDashboard = () => {
   const { user, refreshUser } = useAuth();
@@ -13,7 +13,7 @@ export const RecipientDashboard = () => {
     try {
       const res = await api.get('/api/recipient/dashboard');
       setDashboardData(res.data);
-    } catch (err) {
+    } catch {
       setError('Failed to load recipient dashboard.');
     } finally {
       setLoading(false);
@@ -72,7 +72,7 @@ export const RecipientDashboard = () => {
                   Awaiting Admin Approval (FR-001.2)
                 </h2>
                 <p className="text-sm text-amber-800 mt-1 leading-relaxed">
-                  Awaiting admin approval. You can't claim food until your account is approved.
+                  Awaiting admin approval. You can&apos;t claim food until your account is approved.
                 </p>
                 <p className="text-xs text-amber-700 mt-0.5">
                   Our system administrator must verify your charity credentials before surplus food claiming is enabled.
@@ -114,7 +114,7 @@ export const RecipientDashboard = () => {
                 Account Approved & Verified
               </h2>
               <p className="text-sm text-emerald-800 mt-0.5">
-                Your charitable organization is approved. You will have full food claim privileges in Increment 2.
+                Your charitable organization is approved and will be eligible to claim food when the claiming module is released.
               </p>
             </div>
           </div>
@@ -197,7 +197,7 @@ export const RecipientDashboard = () => {
                   <span className="text-sm font-medium">Browse Available Listings</span>
                 </div>
                 <span className="text-[11px] font-semibold bg-slate-200 text-slate-500 px-2 py-0.5 rounded-full">
-                  Increment 2
+                  Upcoming
                 </span>
               </div>
 
@@ -211,7 +211,7 @@ export const RecipientDashboard = () => {
                   <span className="text-sm font-medium">My Claimed Food</span>
                 </div>
                 <span className="text-[11px] font-semibold bg-slate-200 text-slate-500 px-2 py-0.5 rounded-full">
-                  Increment 2
+                  Upcoming
                 </span>
               </div>
             </div>

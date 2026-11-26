@@ -36,7 +36,7 @@ public class SecurityConfig {
     private final CustomAuthenticationEntryPoint authenticationEntryPoint;
     private final CustomAccessDeniedHandler accessDeniedHandler;
 
-    @Value("${ecobite.cors.allowed-origins:http://localhost:5173}")
+    @Value("${ecobite.cors.allowed-origins:http://localhost:5173,http://127.0.0.1:5173}")
     private String allowedOrigins;
 
     public SecurityConfig(JwtAuthenticationFilter jwtAuthenticationFilter,
@@ -79,10 +79,11 @@ public class SecurityConfig {
                 )
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
-                        .requestMatchers(HttpMethod.POST, "/api/auth/register", "/api/auth/login").permitAll()
+                        .requestMatchers(HttpMethod.POST, "/api/auth/register", "/api/auth/login", "/api/auth/forgot-password", "/api/auth/reset-password").permitAll()
                         .requestMatchers("/api/donor/**").hasRole("DONOR")
                         .requestMatchers("/api/recipient/**").hasRole("RECIPIENT")
                         .requestMatchers("/api/admin/**").hasRole("ADMIN")
+                        .requestMatchers("/api/users/**").hasAnyRole("DONOR", "RECIPIENT", "ADMIN")
                         .requestMatchers("/api/auth/logout", "/api/auth/me").authenticated()
                         .anyRequest().authenticated()
                 )

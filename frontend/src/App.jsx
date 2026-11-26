@@ -1,6 +1,6 @@
-import React from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
-import { AuthProvider, useAuth } from './context/AuthContext';
+import { AuthProvider } from './context/AuthContext';
+import { useAuth } from './hooks/useAuth';
 import { Navbar } from './components/Navbar';
 import { ProtectedRoute, RoleRoute, PublicOnlyRoute } from './components/ProtectedRoute';
 import { LoginPage } from './pages/LoginPage';
@@ -11,6 +11,9 @@ import { AdminDashboard } from './pages/AdminDashboard';
 import { AdminRecipientsPage } from './pages/AdminRecipientsPage';
 import { UnauthorizedPage } from './pages/UnauthorizedPage';
 import { NotFoundPage } from './pages/NotFoundPage';
+import { ProfilePage } from './pages/ProfilePage';
+import { ForgotPasswordPage } from './pages/ForgotPasswordPage';
+import { ResetPasswordPage } from './pages/ResetPasswordPage';
 import { getDashboardPathForRole } from './config/navigation';
 
 const RootRedirect = () => {
@@ -57,6 +60,24 @@ function App() {
                   <PublicOnlyRoute>
                     <RegisterPage />
                   </PublicOnlyRoute>
+                }
+              />
+              <Route
+                path="/forgot-password"
+                element={
+                  <PublicOnlyRoute>
+                    <ForgotPasswordPage />
+                  </PublicOnlyRoute>
+                }
+              />
+              <Route path="/reset-password" element={<ResetPasswordPage />} />
+
+              <Route
+                path="/profile"
+                element={
+                  <ProtectedRoute>
+                    <ProfilePage />
+                  </ProtectedRoute>
                 }
               />
 

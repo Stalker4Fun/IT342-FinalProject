@@ -12,5 +12,13 @@ services:
     volumes:
       - ecobite_pgdata:/var/lib/postgresql/data
 
+  mailpit:
+    image: axllent/mailpit:latest
+    container_name: ecobite-mailpit
+    restart: unless-stopped
+    ports:
+      - "1025:1025"
+      - "8025:8025"
+
 volumes:
   ecobite_pgdata:

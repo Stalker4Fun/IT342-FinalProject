@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import api from '../api/axios';
 
@@ -16,7 +16,7 @@ export const AdminRecipientsPage = () => {
     try {
       const res = await api.get(`/api/admin/recipients?status=${status}`);
       setRecipients(res.data);
-    } catch (err) {
+    } catch {
       setError('Failed to fetch recipients from server.');
     } finally {
       setLoading(false);
@@ -37,7 +37,7 @@ export const AdminRecipientsPage = () => {
       setToastMessage(`Charity "${name}" approved successfully.`);
       setTimeout(() => setToastMessage(''), 4000);
       await fetchRecipients(activeTab);
-    } catch (err) {
+    } catch {
       alert('Failed to approve charity.');
     } finally {
       setActionUserId(null);
@@ -54,7 +54,7 @@ export const AdminRecipientsPage = () => {
       setToastMessage(`Charity "${name}" approval revoked.`);
       setTimeout(() => setToastMessage(''), 4000);
       await fetchRecipients(activeTab);
-    } catch (err) {
+    } catch {
       alert('Failed to revoke charity approval.');
     } finally {
       setActionUserId(null);
@@ -146,7 +146,7 @@ export const AdminRecipientsPage = () => {
           <div className="py-16 text-center">
             <p className="text-sm font-semibold text-slate-700">No organizations found</p>
             <p className="text-xs text-slate-400 mt-1">
-              There are currently no recipients matching the "{activeTab}" filter.
+              There are currently no recipients matching the &quot;{activeTab}&quot; filter.
             </p>
           </div>
         ) : (
