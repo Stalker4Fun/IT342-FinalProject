@@ -4,6 +4,7 @@ import com.ecobite.dto.*;
 import com.ecobite.entity.Role;
 import com.ecobite.entity.User;
 import com.ecobite.exception.DuplicateEmailException;
+import com.ecobite.exception.FieldValidationException;
 import com.ecobite.exception.InvalidRequestException;
 import com.ecobite.exception.ResourceNotFoundException;
 import com.ecobite.repository.UserRepository;
@@ -20,6 +21,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
 import java.util.List;
+import java.util.Map;
 import java.util.regex.Pattern;
 
 @Service
@@ -179,11 +181,44 @@ public class UserService {
         CustomUserDetails userDetails = (CustomUserDetails) authentication.getPrincipal();
         User user = userDetails.getUser();
 
-        // Generate JWT token with sub=userId, role, jti, iat, exp
-        String token = jwtTokenProvider.generateToken(user.getUserId(), user.getRole().name());
+        // Generate JWT token with sub=userId, role, jti, iat, exp (respecting prior password invalidation timestamp)
+        Instant invalidatedBefore = tokenRevocationService.getInvalidatedBefore(user.getUserId());
+        String token = jwtTokenProvider.generateToken(user.getUserId(), user.getRole().name(), invalidatedBefore);
         long expiresIn = jwtTokenProvider.getExpirationSeconds();
 
         return new AuthResponse(token, expiresIn, UserResponse.fromEntity(user));
+    }
+
+    @Transactional
+    public void changePassword(ChangePasswordRequest request, CustomUserDetails principal, String authHeader) {
+        User user = userRepository.findById(principal.getUserId())
+                .orElseThrow(() -> new ResourceNotFoundException("User not found"));
+
+        // Verify current password (400 Bad Request, NOT 401, so client session-expired interceptor isn't triggered)
+        if (!passwordEncoder.matches(request.currentPassword(), user.getPasswordHash())) {
+            throw new InvalidRequestException("Current password is incorrect.");
+        }
+
+        if (!request.newPassword().equals(request.confirmPassword())) {
+            throw new FieldValidationException(
+                    "New password and confirmation do not match.",
+                    Map.of("confirmPassword", "Passwords do not match")
+            );
+        }
+
+        if (passwordEncoder.matches(request.newPassword(), user.getPasswordHash())) {
+            throw new FieldValidationException(
+                    "New password must be different from your current password.",
+                    Map.of("newPassword", "New password must be different from current password")
+            );
+        }
+
+        user.setPasswordHash(passwordEncoder.encode(request.newPassword()));
+        userRepository.save(user);
+
+        // Revoke current JWT immediately and invalidate all prior active sessions
+        logout(authHeader);
+        tokenRevocationService.invalidateAllUserTokens(user);
     }
 
     public void logout(String authHeader) {

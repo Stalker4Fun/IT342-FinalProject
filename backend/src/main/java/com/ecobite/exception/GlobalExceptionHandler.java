@@ -48,6 +48,19 @@ public class GlobalExceptionHandler {
         return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(errorResponse);
     }
 
+    @ExceptionHandler(FieldValidationException.class)
+    public ResponseEntity<ErrorResponse> handleFieldValidation(
+            FieldValidationException ex, HttpServletRequest request) {
+        ErrorResponse errorResponse = new ErrorResponse(
+                HttpStatus.BAD_REQUEST.value(),
+                "Validation Failed",
+                ex.getMessage(),
+                request.getRequestURI(),
+                ex.getFieldErrors()
+        );
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(errorResponse);
+    }
+
     @ExceptionHandler(InvalidRequestException.class)
     public ResponseEntity<ErrorResponse> handleInvalidRequest(
             InvalidRequestException ex, HttpServletRequest request) {
